@@ -74,6 +74,9 @@ class DetailActivity : AppCompatActivity(), ActionMode.Callback, NotificationFra
 
         Log.d(TAG, "Create $this")
 
+        val clipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        clipboardManager.addPrimaryClipChangedListener {}
+
         // Dependencies that depend on Context
         notifier = NotificationService(this)
         appBaseUrl = getString(R.string.app_base_url)
@@ -87,6 +90,32 @@ class DetailActivity : AppCompatActivity(), ActionMode.Callback, NotificationFra
             maybeSubscribeAndLoadView(url)
         } else {
             loadView()
+        }
+    }
+
+    private fun SendText(text: String) {
+        Log.d(TAG, "Sending test notification to ${topicShortUrl(subscriptionBaseUrl, subscriptionTopic)}")
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val user = repository.getUser(subscriptionBaseUrl) // May be null
+                api.publish(subscriptionBaseUrl, subscriptionTopic, user, text)
+            } catch (e: Exception) {
+                runOnUiThread {
+                    val message = if (e is ApiService.UnauthorizedException) {
+                        if (e.user != null) {
+                            getString(R.string.detail_test_message_error_unauthorized_user, e.user.username)
+                        }  else {
+                            getString(R.string.detail_test_message_error_unauthorized_anon)
+                        }
+                    } else {
+                        getString(R.string.detail_test_message_error, e.message)
+                    }
+                    Toast
+                        .makeText(this@DetailActivity, message, Toast.LENGTH_LONG)
+                        .show()
+                }
+            }
         }
     }
 
@@ -320,6 +349,15 @@ class DetailActivity : AppCompatActivity(), ActionMode.Callback, NotificationFra
         // Regularly check if "notification muted" time has passed
         // NOTE: This is done here, because then we know that we've initialized the menu items.
         startNotificationMutedChecker()
+
+        val clipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        if (clipboardManager.hasPrimaryClip()) {
+            val clipData = clipboardManager.primaryClip
+            if (clipData != null && clipData.itemCount > 0) {
+                val text = clipData.getItemAt(0).text.toString()
+                SendText(text)
+            }
+        }
 
         return true
     }
